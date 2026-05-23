@@ -1,0 +1,161 @@
+name: digdata-lakehouse
+
+services:
+  minio:
+    image: minio/minio:latest
+    container_name: digdata-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_DOMAIN: minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    networks:
+      lakehouse:
+        aliases:
+          - warehouse.minio
+          - raw.minio
+
+  mc:
+    image: minio/mc:latest
+    container_name: digdata-minio-mc
+    depends_on:
+      - minio
+    volumes:
+      - ./data:/data
+      - ./:/project:ro
+    networks:
+      - lakehouse
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 minioadmin minioadmin; do
+        echo 'waiting for MinIO';
+        sleep 2;
+      done;
+      mc mb --ignore-existing local/raw;
+      mc mb --ignore-existing local/warehouse;
+      tail -f /dev/null
+      "
+
+  postgres:
+    image: postgres:16
+    container_name: digdata-hms-postgres
+    environment:
+      POSTGRES_DB: metastore_db
+      POSTGRES_USER: hive
+      POSTGRES_PASSWORD: hive
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hive -d metastore_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - lakehouse
+
+  hive-metastore:
+    build:
+      context: ./hive
+    image: digdata/hive-metastore-postgres:4.0.0
+    container_name: digdata-hive-metastore
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      SERVICE_NAME: metastore
+      DB_DRIVER: postgres
+      HIVE_CUSTOM_CONF_DIR: /hive_custom_conf
+      SERVICE_OPTS: >-
+        -Djavax.jdo.option.ConnectionDriverName=org.postgresql.Driver
+        -Djavax.jdo.option.ConnectionURL=jdbc:postgresql://postgres:5432/metastore_db
+        -Djavax.jdo.option.ConnectionUserName=hive
+        -Djavax.jdo.option.ConnectionPassword=hive
+    ports:
+      - "9083:9083"
+    volumes:
+      - ./hive/conf:/hive_custom_conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c ': >/dev/tcp/127.0.0.1/9083'"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+    networks:
+      - lakehouse
+
+  trino:
+    image: trinodb/trino:480
+    container_name: digdata-trino
+    depends_on:
+      - hive-metastore
+      - minio
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./trino/etc:/etc/trino:ro
+    networks:
+      - lakehouse
+
+  spark:
+    build:
+      context: ./spark
+    image: digdata/spark-iceberg-s3a:3.5.5_1.8.1
+    container_name: digdata-spark-iceberg
+    depends_on:
+      - hive-metastore
+      - minio
+    environment:
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+      AWS_REGION: us-east-1
+    ports:
+      - "8888:8888"
+      - "8081:8080"
+      - "10000:10000"
+      - "10001:10001"
+    volumes:
+      - ./spark/conf:/opt/spark/conf:ro
+      - ./spark/jobs:/home/iceberg/jobs:ro
+      - /tmp/digdata-spark-tmp:/spark-tmp
+    networks:
+      lakehouse:
+        aliases:
+          - spark-iceberg
+
+  assistant:
+    build:
+      context: ./assistant
+    container_name: digdata-bi-assistant
+    depends_on:
+      - trino
+    env_file:
+      - path: ./.env
+        required: false
+    environment:
+      TRINO_HOST: trino
+      TRINO_PORT: 8080
+      TRINO_USER: analyst
+      TRINO_CATALOG: iceberg
+      TRINO_SCHEMA: analytics
+      SEMANTIC_LAYER_PATH: /app/semantic_layer.yaml
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./assistant:/app
+      - ./eval:/eval:ro
+    networks:
+      - lakehouse
+
+networks:
+  lakehouse:
+    name: digdata-lakehouse
+
+volumes:
+  minio-data:
+  postgres-data:

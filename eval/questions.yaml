@@ -1,0 +1,36 @@
+questions:
+  - id: top_routes
+    question: Покажи топ-10 маршрутов по количеству поездок.
+    expected_tables:
+      - iceberg.analytics.mart_top_routes
+    checks:
+      - answer_mentions_route
+      - sql_orders_by_trip_count
+  - id: revenue_zone
+    question: Какая зона посадки дала максимальную выручку?
+    expected_tables:
+      - iceberg.analytics.mart_daily_zone_revenue
+    checks:
+      - answer_mentions_revenue
+      - sql_orders_by_revenue
+  - id: hourly_manhattan
+    question: В какие часы самый высокий спрос в Manhattan?
+    expected_tables:
+      - iceberg.analytics.mart_hourly_demand
+    checks:
+      - answer_mentions_hour
+      - sql_filters_or_groups_hour
+  - id: base_kpi
+    question: Сравни dispatching bases по средней выручке на поездку.
+    expected_tables:
+      - iceberg.analytics.mart_base_monthly_kpi
+    checks:
+      - answer_mentions_base
+      - sql_uses_avg_revenue
+  - id: airport
+    question: Сколько аэропортовых поездок было по дням?
+    expected_tables:
+      - iceberg.analytics.mart_airport_trips
+    checks:
+      - answer_mentions_airport
+      - sql_uses_airport_mart

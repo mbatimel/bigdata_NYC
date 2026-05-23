@@ -1,0 +1,6 @@
+streamlit>=1.36,<2
+trino>=0.333
+pandas>=2.2
+PyYAML>=6.0
+requests>=2.32
+sqlglot>=25.0

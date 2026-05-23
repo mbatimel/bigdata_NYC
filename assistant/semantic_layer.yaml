@@ -1,0 +1,102 @@
+catalog: iceberg
+default_schema: analytics
+business_context: >
+  NYC TLC High Volume For-Hire Vehicle trips. Data mart metrics describe demand,
+  gross passenger revenue, route popularity, hourly load, airport trips and
+  dispatching base performance.
+tables:
+  mart_daily_zone_revenue:
+    description: Daily pickup-zone revenue and trip metrics.
+    grain: one row per pickup_date, pickup_borough, pickup_zone
+    columns:
+      pickup_date: Service date in UTC.
+      pickup_borough: Pickup borough.
+      pickup_zone: Pickup taxi zone.
+      trip_count: Number of trips.
+      gross_revenue: Sum of passenger fares, taxes, tolls, surcharges and tips.
+      avg_revenue_per_trip: Average gross revenue per trip.
+      avg_trip_miles: Average trip distance in miles.
+      avg_trip_minutes: Average trip duration in minutes.
+      tips_total: Sum of tips.
+      driver_pay_total: Sum of driver pay.
+      revenue_per_driver_pay: Gross revenue divided by driver pay.
+    metrics:
+      revenue: sum(gross_revenue)
+      trips: sum(trip_count)
+      average_revenue_per_trip: sum(gross_revenue) / nullif(sum(trip_count), 0)
+    synonyms:
+      - revenue
+      - gross revenue
+      - выручка
+      - поездки по зонам
+  mart_base_monthly_kpi:
+    description: Monthly dispatching base KPI.
+    grain: one row per pickup_month, dispatching_base_num
+    columns:
+      pickup_month: Month in yyyy-MM format.
+      dispatching_base_num: TLC base number.
+      trip_count: Number of trips.
+      pickup_zone_count: Number of active pickup zones.
+      gross_revenue: Gross revenue.
+      driver_pay_total: Driver pay.
+      avg_revenue_per_trip: Average revenue per trip.
+      avg_driver_pay_per_trip: Average driver pay per trip.
+      avg_trip_miles: Average trip distance.
+      avg_trip_minutes: Average trip duration.
+    synonyms:
+      - base
+      - dispatching base
+      - база
+      - kpi
+  mart_top_routes:
+    description: Aggregated trips between pickup and dropoff zones.
+    grain: one row per pickup/dropoff borough and zone pair
+    columns:
+      pickup_borough: Pickup borough.
+      pickup_zone: Pickup taxi zone.
+      dropoff_borough: Dropoff borough.
+      dropoff_zone: Dropoff taxi zone.
+      trip_count: Number of trips.
+      gross_revenue: Gross revenue.
+      avg_trip_miles: Average distance.
+      avg_trip_minutes: Average duration.
+    synonyms:
+      - route
+      - routes
+      - маршрут
+      - топ маршрутов
+  mart_hourly_demand:
+    description: Hourly demand and revenue by pickup borough.
+    grain: one row per pickup_hour, pickup_borough
+    columns:
+      pickup_hour: Pickup hour from 0 to 23.
+      pickup_borough: Pickup borough.
+      trip_count: Number of trips.
+      gross_revenue: Gross revenue.
+      avg_revenue_per_trip: Average revenue per trip.
+    synonyms:
+      - hour
+      - hourly
+      - час
+      - спрос
+  mart_airport_trips:
+    description: Airport trips detected by airport fee.
+    grain: one row per pickup_date, pickup_borough, pickup_zone
+    columns:
+      pickup_date: Service date.
+      pickup_borough: Pickup borough.
+      pickup_zone: Pickup taxi zone.
+      airport_trip_count: Number of airport trips.
+      gross_revenue: Gross revenue for airport trips.
+      avg_airport_fee: Average airport fee.
+      avg_trip_miles: Average distance.
+    synonyms:
+      - airport
+      - аэропорт
+      - airport fee
+rules:
+  - Use only SELECT statements.
+  - Prefer fully qualified table names like iceberg.analytics.mart_daily_zone_revenue.
+  - Add LIMIT 100 unless the user explicitly asks for all rows or the query is an aggregate.
+  - Preserve an explicit result count from the user question in LIMIT for detail queries.
+  - Do not query raw or curated tables unless the question cannot be answered by analytics marts.
